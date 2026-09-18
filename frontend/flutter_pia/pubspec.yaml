@@ -1,0 +1,50 @@
+name: creatingwings
+description: CreatingWings — domestic safety & financial advice chatbot.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.4.0
+  auth0_flutter: ^2.6.0
+  flutter_secure_storage: ^10.3.1
+  flutter_dotenv: ^6.0.1
+  url_launcher: ^6.3.2
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/logo.png
+    - .env
+
+  # Manrope matches the HTML template. Static files only — Flutter's handling of
+  # the variable Manrope[wght].ttf is inconsistent across versions.
+  fonts:
+    - family: Manrope
+      fonts:
+        - asset: assets/fonts/Manrope-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Manrope-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Manrope-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Manrope-Bold.ttf
+          weight: 700
+
+# Launcher icon generation: `dart run flutter_launcher_icons`
+# Sources live in assets/icon/ and are built from assets/logo.png.
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  remove_alpha_ios: true
