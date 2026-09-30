@@ -1,0 +1,8 @@
+# Lovable-managed web prototype — kept out of this repo on purpose.
+/frontend/pia/
+
+# Environment/secrets safety net (per-project .gitignore files also cover this,
+# e.g. frontend/flutter_pia/.gitignore — this is a repo-wide backstop).
+.env
+*.env
+!*.env.example

@@ -13,13 +13,8 @@ class Msg {
   const Msg(this.text, {this.fromUser = false});
 }
 
-const List<Msg> kSampleThread = [
-  Msg("Hi! I help with home safety and money questions. What's on your mind?"),
-  Msg('Is it okay to leave my space heater on overnight?', fromUser: true),
-  Msg('Best not to. Switch heaters off when you sleep, and keep them at least 3 ft from anything flammable.'),
-  Msg('Good to know. How much should my emergency fund be?', fromUser: true),
-  Msg('Aim for 3–6 months of essential expenses in an easy-access savings account.'),
-];
+const Msg _kGreeting =
+    Msg("Hi! I help with home safety and money questions. What's on your mind?");
 
 /// Screens 1 & 4 — chat with header logo, chatbar, exclamation button,
 /// and overflow menu (opens the menu sheet).
@@ -36,23 +31,130 @@ class _ChatScreenState extends State<ChatScreen> {
   final AuthService _authService = AuthService();
   late final ApiService _apiService = ApiService(_authService);
 
-  bool _busy = false;
+  final List<Msg> _messages = [_kGreeting];
+  final TextEditingController _composerController = TextEditingController();
 
-  Future<void> _loginAndFetchUser() async {
+  String? _userId;
+  String? _conversationId;
+  Future<String?>? _userIdFuture;
+
+  bool _busy = false; // login in flight
+  bool _sending = false; // chat send in flight
+
+  @override
+  void dispose() {
+    _composerController.dispose();
+    super.dispose();
+  }
+
+  /// Resolves the identity used for `/api/chat`: the real Auth0 sub if
+  /// logged in, otherwise a persisted (or freshly minted) guest id.
+  /// Memoized so rapid double-taps on send can't mint two guest accounts.
+  Future<String?> _ensureUserId() {
+    return _userIdFuture ??= _resolveUserId();
+  }
+
+  Future<String?> _resolveUserId() async {
+    if (_userId != null) return _userId;
+
+    if (await _authService.isLoggedIn()) {
+      _userId = await _authService.getUserId();
+      if (_userId != null) return _userId;
+    }
+
+    final cachedAnonymous = await _authService.getAnonymousUserId();
+    if (cachedAnonymous != null) {
+      _userId = cachedAnonymous;
+      return _userId;
+    }
+
+    final guest = await _apiService.createAnonymousUser();
+    final guestId = guest?['user_id'] as String?;
+    if (guestId != null) {
+      await _authService.setAnonymousUserId(guestId);
+      _userId = guestId;
+    }
+    return _userId;
+  }
+
+  Future<void> _login() async {
     if (_busy) return;
+    if (await _authService.isLoggedIn()) {
+      _show('Already signed in');
+      return;
+    }
     setState(() => _busy = true);
     try {
-      if (!await _authService.isLoggedIn()) {
-        final token = await _authService.login();
-        if (token == null) {
-          _show('Login failed');
-          return;
-        }
+      final credentials = await _authService.login();
+      if (credentials == null) {
+        _show('Login failed');
+        return;
       }
-      final user = await _apiService.getUser();
-      _show(user == null ? 'Could not load user' : 'Signed in as ${user['email'] ?? user['sub'] ?? user}');
+
+      final email = credentials.user.email;
+      if (email == null || email.isEmpty) {
+        _show("Login succeeded but no email was returned. Please try again.");
+        return;
+      }
+
+      final registered = await _apiService.registerUser(
+        sub: credentials.user.sub,
+        name: credentials.user.name ?? '',
+        email: email,
+      );
+      if (registered == null) {
+        _show("Signed in, but couldn't sync your profile. Please try again.");
+        return;
+      }
+
+      setState(() {
+        _userId = credentials.user.sub;
+        _conversationId = null;
+        _userIdFuture = null;
+        _messages
+          ..clear()
+          ..add(_kGreeting);
+      });
+      _show('Signed in as $email');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onSend() async {
+    final text = _composerController.text.trim();
+    if (text.isEmpty || _sending) return;
+
+    setState(() => _sending = true);
+    try {
+      final userId = await _ensureUserId();
+      if (userId == null) {
+        _show('Could not start a session. Check your connection.');
+        return;
+      }
+
+      setState(() {
+        _messages.add(Msg(text, fromUser: true));
+        _composerController.clear();
+      });
+
+      final result = await _apiService.sendMessage(
+        userId: userId,
+        conversationId: _conversationId,
+        message: text,
+      );
+
+      if (result == null) {
+        _show('Message failed to send. Please try again.');
+        return;
+      }
+
+      setState(() {
+        _conversationId = result['conversation_id'] as String?;
+        _messages.add(Msg(result['response'] as String? ?? ''));
+      });
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -75,7 +177,7 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 _Header(
                   onMenu: () => showMenuSheet(context),
-                  onLogin: _loginAndFetchUser,
+                  onLogin: _login,
                   loginBusy: _busy,
                 ),
                 const Divider(height: 1, color: Color(0xFFE2ECF3), indent: 20, endIndent: 20),
@@ -94,14 +196,18 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      for (final m in kSampleThread) ...[
+                      for (final m in _messages) ...[
                         _Bubble(m),
                         const SizedBox(height: 14),
                       ],
                     ],
                   ),
                 ),
-                const _Composer(),
+                _Composer(
+                  controller: _composerController,
+                  sending: _sending,
+                  onSend: _onSend,
+                ),
               ],
             ),
           ),
@@ -247,7 +353,10 @@ class _Bubble extends StatelessWidget {
 }
 
 class _Composer extends StatelessWidget {
-  const _Composer();
+  final TextEditingController controller;
+  final bool sending;
+  final VoidCallback onSend;
+  const _Composer({required this.controller, required this.sending, required this.onSend});
 
   @override
   Widget build(BuildContext context) {
@@ -272,22 +381,26 @@ class _Composer extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: TextField(
+                    controller: controller,
+                    enabled: !sending,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => onSend(),
                     decoration: InputDecoration(
                       isDense: true,
                       border: InputBorder.none,
                       hintText: 'Message ${ChatScreen.botName}…',
-                      hintStyle: TextStyle(
+                      hintStyle: const TextStyle(
                         fontFamily: AppText.fontFamily,
                         fontSize: 14,
                         color: Color(0xFF8CA0AC),
                       ),
                     ),
-                    style: TextStyle(fontFamily: AppText.fontFamily, fontSize: 14),
+                    style: const TextStyle(fontFamily: AppText.fontFamily, fontSize: 14),
                   ),
                 ),
-                _SendButton(),
+                _SendButton(sending: sending, onTap: onSend),
               ],
             ),
           ),
@@ -330,16 +443,32 @@ class _Composer extends StatelessWidget {
 }
 
 class _SendButton extends StatelessWidget {
+  final bool sending;
+  final VoidCallback onTap;
+  const _SendButton({required this.sending, required this.onTap});
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: const BoxDecoration(
-        color: AppColors.accent,
-        shape: BoxShape.circle,
+    return InkResponse(
+      onTap: sending ? null : onTap,
+      radius: 24,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: const BoxDecoration(
+          color: AppColors.accent,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: sending
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+        ),
       ),
-      child: const Icon(Icons.send_rounded, color: Colors.white, size: 18),
     );
   }
 }

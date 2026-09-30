@@ -31,20 +31,18 @@ class AuthService {
 
   static const String _accessTokenKey = 'access_token';
   static const String _userIdKey = 'user_id';
+  static const String _anonymousUserIdKey = 'anonymous_user_id';
 
-  Future<String?> login() async {
+  Future<Credentials?> login() async {
     try {
       final credentials = await _auth0.webAuthentication(scheme: _scheme).login(
         audience: 'https://chat.creatingwings.org/api',
-      );  
+      );
 
-      final accessToken = credentials.accessToken;
-      final userId = credentials.user.sub;
+      await _storage.write(key: _accessTokenKey, value: credentials.accessToken);
+      await _storage.write(key: _userIdKey, value: credentials.user.sub);
 
-      await _storage.write(key: _accessTokenKey, value: accessToken);
-      await _storage.write(key: _userIdKey, value: userId);
-
-      return accessToken;
+      return credentials;
     } catch (e) {
       print('Login error: $e');
       return null;
@@ -57,6 +55,16 @@ class AuthService {
 
   Future<String?> getUserId() async {
     return await _storage.read(key: _userIdKey);
+  }
+
+  /// The backend's guest identity (`POST /api/user/anonymous`), persisted so
+  /// a not-logged-in user keeps the same chat identity across app restarts.
+  Future<String?> getAnonymousUserId() async {
+    return await _storage.read(key: _anonymousUserIdKey);
+  }
+
+  Future<void> setAnonymousUserId(String id) async {
+    await _storage.write(key: _anonymousUserIdKey, value: id);
   }
 
   Future<bool> isLoggedIn() async {
