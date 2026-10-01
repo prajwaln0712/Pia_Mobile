@@ -26,17 +26,18 @@ class AuthService {
 
   /// Custom URL scheme for the Auth0 callback. Must match the `auth0Scheme`
   /// manifest placeholder and the URLs registered in the Auth0 dashboard:
-  /// creatingwings.org://<domain>/android/creatingwings.org/callback
-  static const String _scheme = 'creatingwings.org';
+  /// org.creatingwings.pia://<domain>/android/org.creatingwings.pia/callback
+  static const String _scheme = 'org.creatingwings.pia';
 
   static const String _accessTokenKey = 'access_token';
   static const String _userIdKey = 'user_id';
   static const String _anonymousUserIdKey = 'anonymous_user_id';
 
-  Future<Credentials?> login() async {
+  Future<Credentials?> login({String? connection}) async {
     try {
       final credentials = await _auth0.webAuthentication(scheme: _scheme).login(
         audience: 'https://chat.creatingwings.org/api',
+        parameters: connection == null ? const {} : {'connection': connection},
       );
 
       await _storage.write(key: _accessTokenKey, value: credentials.accessToken);
@@ -48,6 +49,11 @@ class AuthService {
       return null;
     }
   }
+
+  /// Skips Auth0's hosted login page and goes straight to Google's own
+  /// sign-in screen. Requires the Google social connection to be enabled
+  /// for this app in the Auth0 dashboard.
+  Future<Credentials?> loginWithGoogle() => login(connection: 'google-oauth2');
 
   Future<String?> getAccessToken() async {
     return await _storage.read(key: _accessTokenKey);

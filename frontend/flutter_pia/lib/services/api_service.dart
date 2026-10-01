@@ -87,4 +87,53 @@ class ApiService {
       return null;
     }
   }
+
+  /// Resolves the guest identity: reuses a cached one, else mints a new one
+  /// via `createAnonymousUser()` and persists it.
+  Future<String?> continueAsGuest() async {
+    final cached = await _authService.getAnonymousUserId();
+    if (cached != null) return cached;
+
+    final guest = await createAnonymousUser();
+    final guestId = guest?['user_id'] as String?;
+    if (guestId != null) {
+      await _authService.setAnonymousUserId(guestId);
+    }
+    return guestId;
+  }
+
+  /// Full Google login + backend registration in one call, so screens don't
+  /// each reimplement the sequence. `sub` is non-null on success — including
+  /// a registration-sync failure, since login itself still succeeded and the
+  /// backend falls back to the body `user_id` for unregistered tokens.
+  Future<({String? sub, String? email, String? error})> loginWithGoogleAndRegister() async {
+    final credentials = await _authService.loginWithGoogle();
+    if (credentials == null) {
+      return (sub: null, email: null, error: 'Login failed');
+    }
+
+    final email = credentials.user.email;
+    if (email == null || email.isEmpty) {
+      return (
+        sub: null,
+        email: null,
+        error: 'Login succeeded but no email was returned. Please try again.',
+      );
+    }
+
+    final registered = await registerUser(
+      sub: credentials.user.sub,
+      name: credentials.user.name ?? '',
+      email: email,
+    );
+    if (registered == null) {
+      return (
+        sub: credentials.user.sub,
+        email: email,
+        error: "Signed in, but couldn't sync your profile. Please try again.",
+      );
+    }
+
+    return (sub: credentials.user.sub, email: email, error: null);
+  }
 }

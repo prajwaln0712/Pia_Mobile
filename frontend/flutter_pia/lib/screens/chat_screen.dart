@@ -62,18 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_userId != null) return _userId;
     }
 
-    final cachedAnonymous = await _authService.getAnonymousUserId();
-    if (cachedAnonymous != null) {
-      _userId = cachedAnonymous;
-      return _userId;
-    }
-
-    final guest = await _apiService.createAnonymousUser();
-    final guestId = guest?['user_id'] as String?;
-    if (guestId != null) {
-      await _authService.setAnonymousUserId(guestId);
-      _userId = guestId;
-    }
+    _userId = await _apiService.continueAsGuest();
     return _userId;
   }
 
@@ -85,37 +74,21 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() => _busy = true);
     try {
-      final credentials = await _authService.login();
-      if (credentials == null) {
-        _show('Login failed');
-        return;
-      }
-
-      final email = credentials.user.email;
-      if (email == null || email.isEmpty) {
-        _show("Login succeeded but no email was returned. Please try again.");
-        return;
-      }
-
-      final registered = await _apiService.registerUser(
-        sub: credentials.user.sub,
-        name: credentials.user.name ?? '',
-        email: email,
-      );
-      if (registered == null) {
-        _show("Signed in, but couldn't sync your profile. Please try again.");
+      final result = await _apiService.loginWithGoogleAndRegister();
+      if (result.sub == null) {
+        _show(result.error!);
         return;
       }
 
       setState(() {
-        _userId = credentials.user.sub;
+        _userId = result.sub;
         _conversationId = null;
         _userIdFuture = null;
         _messages
           ..clear()
           ..add(_kGreeting);
       });
-      _show('Signed in as $email');
+      _show(result.error ?? 'Signed in as ${result.email}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

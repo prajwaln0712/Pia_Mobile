@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import '../services/auth_service.dart';
 import 'chat_screen.dart';
+import 'welcome_screen.dart';
 
 /// Screen 3 — black disclaimer splash shown for 5 seconds at launch,
 /// then routes to the chat screen.
@@ -16,10 +18,16 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(seconds: 5), () {
+    Timer(const Duration(seconds: 5), () async {
+      if (!mounted) return;
+      final authService = AuthService();
+      final loggedIn = await authService.isLoggedIn();
+      final hasGuest = loggedIn ? false : await authService.getAnonymousUserId() != null;
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const ChatScreen()),
+        MaterialPageRoute(
+          builder: (_) => (loggedIn || hasGuest) ? const ChatScreen() : const WelcomeScreen(),
+        ),
       );
     });
   }
