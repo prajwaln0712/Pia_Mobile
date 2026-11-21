@@ -1,4 +1,4 @@
-package org.creatingwings.pia
+package creatingwings.org
 
 import io.flutter.embedding.android.FlutterActivity
 

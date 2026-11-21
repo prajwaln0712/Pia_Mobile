@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import 'notes_decoy_screen.dart';
 
 /// Screen 2 — emergency alert dialog with Quick Exit.
 /// Presented as a modal over the current screen.
@@ -30,7 +31,10 @@ class _EmergencyOverlay extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
                 child: _QuickExit(
-                  onTap: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                  onTap: () => Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const NotesDecoyScreen()),
+                    (route) => false,
+                  ),
                 ),
               ),
             ),

@@ -38,22 +38,49 @@ class ApiService {
 
   /// Upserts the backend user record for a just-logged-in Auth0 identity.
   /// Must be called after every successful login — without it the sub has no
-  /// DB row and `/api/chat`/`/api/user/me` will 404 for it.
+  /// DB row and `/api/chat`/`/api/user/me` will 404 for it. The extended
+  /// profile fields are optional and map to the backend's own field names.
   Future<Map<String, dynamic>?> registerUser({
     required String sub,
     required String name,
     required String email,
+    String? location,
+    String? maritalStatus,
+    String? householdIncome,
+    String? educationLevel,
+    String? employmentStatus,
+    bool? acceptedTerms,
+    bool? is18OrOlder,
   }) async {
     try {
       final response = await _dio.post('/api/auth/callback', data: {
         'sub': sub,
         'name': name,
         'email': email,
+        if (location != null) 'location': location,
+        if (maritalStatus != null) 'marital_status': maritalStatus,
+        if (householdIncome != null) 'income_range': householdIncome,
+        if (educationLevel != null) 'education': educationLevel,
+        if (employmentStatus != null) 'employment_status': employmentStatus,
+        if (acceptedTerms != null) 'acceptedTerms': acceptedTerms,
+        if (is18OrOlder != null) 'is18OrOlder': is18OrOlder,
       });
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       print('registerUser failed: ${e.response?.statusCode} ${e.response?.data}');
       return null;
+    }
+  }
+
+  /// Permanently deletes the authenticated user's account, conversation
+  /// history, and linked Auth0 identity. Requires a valid Bearer token.
+  Future<bool> deleteAccount() async {
+    try {
+      await _dio.delete('/api/user/me');
+      return true;
+    } on DioException catch (e) {
+      print('deleteAccount failed: ${e.response?.statusCode} ${e.response?.data}');
+      return false;
     }
   }
 
@@ -102,38 +129,4 @@ class ApiService {
     return guestId;
   }
 
-  /// Full Google login + backend registration in one call, so screens don't
-  /// each reimplement the sequence. `sub` is non-null on success — including
-  /// a registration-sync failure, since login itself still succeeded and the
-  /// backend falls back to the body `user_id` for unregistered tokens.
-  Future<({String? sub, String? email, String? error})> loginWithGoogleAndRegister() async {
-    final credentials = await _authService.loginWithGoogle();
-    if (credentials == null) {
-      return (sub: null, email: null, error: 'Login failed');
-    }
-
-    final email = credentials.user.email;
-    if (email == null || email.isEmpty) {
-      return (
-        sub: null,
-        email: null,
-        error: 'Login succeeded but no email was returned. Please try again.',
-      );
-    }
-
-    final registered = await registerUser(
-      sub: credentials.user.sub,
-      name: credentials.user.name ?? '',
-      email: email,
-    );
-    if (registered == null) {
-      return (
-        sub: credentials.user.sub,
-        email: email,
-        error: "Signed in, but couldn't sync your profile. Please try again.",
-      );
-    }
-
-    return (sub: credentials.user.sub, email: email, error: null);
-  }
 }

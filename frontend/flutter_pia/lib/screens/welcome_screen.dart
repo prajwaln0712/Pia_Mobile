@@ -4,10 +4,10 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/wave_background.dart';
 import 'chat_screen.dart';
+import 'profile_screen.dart';
 
-/// First screen a new (not logged in, no guest id yet) user sees after the
-/// splash disclaimer — choose a real Google account or continue as a guest.
-/// Returning users skip this screen entirely (see splash_screen.dart).
+/// First screen a user sees after the splash disclaimer — log in with Google.
+/// Shown on every launch (see splash_screen.dart).
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -39,29 +39,36 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      final result = await _apiService.loginWithGoogleAndRegister();
-      if (result.sub == null) {
-        _show(result.error!);
+      final credentials = await _authService.loginWithGoogle();
+      if (credentials == null) {
+        _show('Login failed');
         return;
       }
-      // Login itself succeeded even if profile-sync failed — chat still
-      // works via the backend's fallback, so just proceed either way.
-      _goToChat();
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
-  Future<void> _continueAsGuest() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final guestId = await _apiService.continueAsGuest();
-      if (guestId == null) {
-        _show('Could not start a session. Check your connection.');
+      final email = credentials.user.email;
+      if (email == null || email.isEmpty) {
+        _show('Login succeeded but no email was returned. Please try again.');
         return;
       }
-      _goToChat();
+
+      // Already registered (a saved record exists for this account) — skip
+      // the profile form entirely and go straight to chat.
+      final existingUser = await _apiService.getUser();
+      if (!mounted) return;
+      if (existingUser != null) {
+        _goToChat();
+        return;
+      }
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ProfileScreen(
+            sub: credentials.user.sub,
+            email: email,
+            fullName: credentials.user.name ?? '',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -94,7 +101,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Sign in to save your conversation, or continue without an account.',
+                    'Sign in to save your conversation.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: AppText.fontFamily,
@@ -126,30 +133,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                               ),
                             )
                           : const Text(
-                              'Continue with Google',
+                              'Login',
                               style: TextStyle(
                                 fontFamily: AppText.fontFamily,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: TextButton(
-                      onPressed: _busy ? null : _continueAsGuest,
-                      child: const Text(
-                        'Continue as Guest',
-                        style: TextStyle(
-                          fontFamily: AppText.fontFamily,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.inkMuted,
-                        ),
-                      ),
                     ),
                   ),
                 ],

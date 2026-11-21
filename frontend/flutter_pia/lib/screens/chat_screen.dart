@@ -21,7 +21,7 @@ const Msg _kGreeting =
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
 
-  static const botName = 'CreatingWings';
+  static const botName = 'Pia';
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -38,7 +38,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _conversationId;
   Future<String?>? _userIdFuture;
 
-  bool _busy = false; // login in flight
   bool _sending = false; // chat send in flight
 
   @override
@@ -64,34 +63,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _userId = await _apiService.continueAsGuest();
     return _userId;
-  }
-
-  Future<void> _login() async {
-    if (_busy) return;
-    if (await _authService.isLoggedIn()) {
-      _show('Already signed in');
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      final result = await _apiService.loginWithGoogleAndRegister();
-      if (result.sub == null) {
-        _show(result.error!);
-        return;
-      }
-
-      setState(() {
-        _userId = result.sub;
-        _conversationId = null;
-        _userIdFuture = null;
-        _messages
-          ..clear()
-          ..add(_kGreeting);
-      });
-      _show(result.error ?? 'Signed in as ${result.email}');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _onSend() async {
@@ -150,8 +121,6 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 _Header(
                   onMenu: () => showMenuSheet(context),
-                  onLogin: _login,
-                  loginBusy: _busy,
                 ),
                 const Divider(height: 1, color: Color(0xFFE2ECF3), indent: 20, endIndent: 20),
                 Expanded(
@@ -192,9 +161,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
 class _Header extends StatelessWidget {
   final VoidCallback onMenu;
-  final VoidCallback onLogin;
-  final bool loginBusy;
-  const _Header({required this.onMenu, required this.onLogin, required this.loginBusy});
+  const _Header({required this.onMenu});
 
   @override
   Widget build(BuildContext context) {
@@ -202,7 +169,7 @@ class _Header extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
       child: Row(
         children: [
-          _LoginButton(onTap: onLogin, busy: loginBusy),
+          const SizedBox(width: 40),
           Expanded(
             child: Column(
               children: [
@@ -222,40 +189,6 @@ class _Header extends StatelessWidget {
           ),
           _OverflowButton(onTap: onMenu),
         ],
-      ),
-    );
-  }
-}
-
-class _LoginButton extends StatelessWidget {
-  final VoidCallback onTap;
-  final bool busy;
-  const _LoginButton({required this.onTap, required this.busy});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: busy ? null : onTap,
-      radius: 26,
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: Center(
-          child: busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Color(0xFF5B7382),
-                  ),
-                )
-              : const Icon(
-                  Icons.login_rounded,
-                  size: 22,
-                  color: Color(0xFF5B7382),
-                ),
-        ),
       ),
     );
   }
